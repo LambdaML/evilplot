@@ -50,4 +50,6 @@ final case class Colors(
 
   stream: Seq[Color],
   continuousColoring: ContinuousColoring
-)
+) {
+  private[evilplot] def aesthetics: Map[String, Any] = Map("background" -> background)
+}

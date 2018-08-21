@@ -30,24 +30,31 @@
 
 package com.cibo.evilplot.plot.renderers
 
+import com.cibo.evilplot.colors.Color
 import com.cibo.evilplot.geometry.{Drawable, Extent, Line}
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 
 trait GridLineRenderer {
-  def render(extent: Extent, label: String): Drawable
+  def render(extent: Extent, label: String)(implicit theme: Theme): Drawable
 }
 
 object GridLineRenderer {
 
-  def xGridLineRenderer()(implicit theme: Theme): GridLineRenderer = new GridLineRenderer {
-    def render(extent: Extent, label: String): Drawable = {
-      Line(extent.height, theme.elements.gridLineSize).colored(theme.colors.gridLine).rotated(90)
+  def xGridLineRenderer(
+    lineWidth: ThemedValue[Double] = (t: Theme) => t.elements.gridLineSize,
+    lineColor: ThemedValue[Color] = (t: Theme) => t.colors.gridLine
+  ): GridLineRenderer = new GridLineRenderer {
+    def render(extent: Extent, label: String)(implicit theme: Theme): Drawable = {
+      Line(extent.height, lineWidth).colored(lineColor).rotated(90)
     }
   }
 
-  def yGridLineRenderer()(implicit theme: Theme): GridLineRenderer = new GridLineRenderer {
-    def render(extent: Extent, label: String): Drawable = {
-      Line(extent.width, theme.elements.gridLineSize).colored(theme.colors.gridLine)
+  def yGridLineRenderer(
+    lineWidth: ThemedValue[Double] = (t: Theme) => t.elements.gridLineSize,
+    lineColor: ThemedValue[Color] = (t: Theme) => t.colors.gridLine
+  ): GridLineRenderer = new GridLineRenderer {
+    def render(extent: Extent, label: String)(implicit theme: Theme): Drawable = {
+      Line(extent.width, lineWidth).colored(lineColor)
     }
   }
 }

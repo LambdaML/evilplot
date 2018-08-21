@@ -33,7 +33,7 @@ package com.cibo.evilplot.plot
 import com.cibo.evilplot.colors.{Color, DefaultColors}
 import com.cibo.evilplot.geometry.{Drawable, EmptyDrawable, Extent, Rect, Style, Text}
 import com.cibo.evilplot.numeric.Bounds
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.renderers.{BarRenderer, PlotRenderer}
 
 /** Data for a bar in a bar chart.
@@ -147,10 +147,10 @@ object BarChart {
     */
   def apply(
     values: Seq[Double],
-    color: Option[Color] = None,
-    spacing: Option[Double] = None,
-    boundBuffer: Option[Double] = None
-  )(implicit theme: Theme): Plot = {
+    color: ThemedValue[Color] = (t: Theme) => t.colors.bar,
+    spacing: ThemedValue[Double] = (t: Theme) => t.elements.barSpacing,
+    boundBuffer: ThemedValue[Double] = (t: Theme) => t.elements.boundBuffer
+  ): Plot = {
     val barRenderer = BarRenderer.default(color)
     val bars = values.map(Bar(_))
     custom(bars, Some(barRenderer), spacing, None, boundBuffer)
@@ -161,7 +161,7 @@ object BarChart {
     values: Seq[Seq[Double]],
     labels: Seq[String] = Seq.empty,
     colors: Seq[Color] = Seq.empty,
-    spacing: Option[Double] = None,
+    spacing: ThemedValue[Double] = (t: Theme) => t.elements.barSpacing,
     clusterSpacing: Option[Double] = None,
     boundBuffer: Option[Double] = None
   )(implicit theme: Theme): Plot = {

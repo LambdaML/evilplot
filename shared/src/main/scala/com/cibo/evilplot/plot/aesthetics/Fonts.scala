@@ -38,4 +38,11 @@ final case class Fonts(
   tickLabelSize: Double,
   facetLabelSize: Double,
   fontFace: String
-)
+) {
+  private[evilplot] def aesthetics: Map[String, Any] = Map(
+    "titleSize" -> titleSize,
+    "labelSize" -> labelSize,
+    "annotationSize" -> annotationSize
+  )
+
+}

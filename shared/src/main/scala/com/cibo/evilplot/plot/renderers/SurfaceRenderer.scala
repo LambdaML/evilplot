@@ -33,13 +33,14 @@ package com.cibo.evilplot.plot.renderers
 import com.cibo.evilplot.colors._
 import com.cibo.evilplot.geometry.{Drawable, EmptyDrawable, Extent, LineStyle, Path}
 import com.cibo.evilplot.numeric.{Bounds, Point, Point3}
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.renderers.SurfaceRenderer.SurfaceRenderContext
 import com.cibo.evilplot.plot.{LegendContext, Plot}
 
 trait SurfaceRenderer extends PlotElementRenderer[SurfaceRenderContext] {
-  def legendContext(levels: Seq[Double]): LegendContext = LegendContext.empty
-  def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext): Drawable
+  def legendContext(levels: Seq[Double])(implicit theme: Theme): LegendContext = LegendContext.empty
+  def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext)(
+    implicit theme: Theme): Drawable
 }
 
 object SurfaceRenderer {
@@ -51,21 +52,23 @@ object SurfaceRenderer {
     currentLevel: Double)
 
   def contours(
-    color: Option[Color] = None,
-    strokeWidth: Option[Double] = None,
-    lineStyle: Option[LineStyle] = None
-  )(implicit theme: Theme): SurfaceRenderer = new SurfaceRenderer {
-    def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext): Drawable = {
+    color: ThemedValue[Color] = (t: Theme) => t.colors.path,
+    strokeWidth: ThemedValue[Double] = (t: Theme) => t.elements.strokeWidth,
+    lineStyle: ThemedValue[LineStyle] = (t: Theme) => t.elements.lineDashStyle
+  ): SurfaceRenderer = new SurfaceRenderer {
+    def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext)(
+      implicit theme: Theme): Drawable = {
       surface.currentLevelPaths
-        .map(pathpts =>
-          Path(pathpts.map(p => Point(p.x, p.y)), strokeWidth.getOrElse(theme.elements.strokeWidth))
-            .dashed(lineStyle.getOrElse(theme.elements.lineDashStyle)))
+        .map(
+          pathpts =>
+            Path(pathpts.map(p => Point(p.x, p.y)), strokeWidth)
+              .dashed(lineStyle))
         .group
-        .colored(color.getOrElse(theme.colors.path))
+        .colored(color)
     }
   }
 
-  def densityColorContours(points: Seq[Seq[Seq[Point3]]])(implicit theme: Theme): SurfaceRenderer =
+  def densityColorContours(points: Seq[Seq[Seq[Point3]]]): SurfaceRenderer =
     new SurfaceRenderer {
       private def getColorSeq(numPoints: Int): Seq[Color] =
         if (numPoints <= DefaultColors.lightPalette.length)
@@ -77,7 +80,7 @@ object SurfaceRenderer {
         Bounds.get(mapped)
       }
 
-      override def legendContext(levels: Seq[Double]): LegendContext = {
+      override def legendContext(levels: Seq[Double])(implicit theme: Theme): LegendContext = {
         val colors = getColorSeq(points.length)
         getBySafe(points)(_.headOption.flatMap(_.headOption.map(_.z)))
           .map { bs =>
@@ -87,7 +90,8 @@ object SurfaceRenderer {
           .getOrElse(LegendContext.empty)
       }
 
-      def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext): Drawable = {
+      def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext)(
+        implicit theme: Theme): Drawable = {
         val surfaceRenderer = getBySafe(points)(_.headOption.flatMap(_.headOption.map(_.z)))
           .map { bs =>
             val bar = ScaledColorBar(getColorSeq(points.length), bs.min, bs.max)
@@ -100,37 +104,35 @@ object SurfaceRenderer {
 
   def densityColorContours(
     bar: ScaledColorBar
-  )(points: Seq[Seq[Seq[Point3]]])(implicit theme: Theme): SurfaceRenderer = new SurfaceRenderer {
-    def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext): Drawable = {
+  )(points: Seq[Seq[Seq[Point3]]]): SurfaceRenderer = new SurfaceRenderer {
+    def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext)(
+      implicit theme: Theme): Drawable = {
       surface.currentLevelPaths.headOption
         .map(pts =>
-          contours(Some(pts.headOption.fold(theme.colors.path)(_ =>
-            bar.getColor(surface.currentLevel))))
+          contours(pts.headOption.fold(theme.colors.path)(_ => bar.getColor(surface.currentLevel)))
             .render(plot, extent, surface))
         .getOrElse(EmptyDrawable())
     }
   }
 
   def densityColorContours(
-    coloring: Option[Coloring[Double]] = None,
-    strokeWidth: Option[Double] = None,
-    dashPattern: Option[LineStyle] = None)(implicit theme: Theme): SurfaceRenderer =
+    coloring: ThemedValue[Coloring[Double]] = (t: Theme) => t.colors.continuousColoring,
+    strokeWidth: ThemedValue[Double] = (t: Theme) => t.elements.strokeWidth,
+    dashPattern: ThemedValue[LineStyle] = (t: Theme) => t.elements.lineDashStyle): SurfaceRenderer =
     new SurfaceRenderer {
-      private val useColoring: Coloring[Double] =
-        coloring.getOrElse(theme.colors.continuousColoring)
-
-      def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext): Drawable = {
-        val color = useColoring(surface.levels).apply(surface.currentLevel)
+      def render(plot: Plot, extent: Extent, surface: SurfaceRenderContext)(
+        implicit theme: Theme): Drawable = {
+        val color = coloring.get(theme).apply(surface.levels).apply(surface.currentLevel)
         surface.currentLevelPaths
           .map(
             pts =>
-              contours(Some(color), strokeWidth, dashPattern)
+              contours(color, strokeWidth, dashPattern)
                 .render(plot, extent, surface))
           .group
       }
 
-      override def legendContext(levels: Seq[Double]): LegendContext = {
-        useColoring.legendContext(levels)
+      override def legendContext(levels: Seq[Double])(implicit theme: Theme): LegendContext = {
+        coloring.legendContext(levels)
       }
     }
 }

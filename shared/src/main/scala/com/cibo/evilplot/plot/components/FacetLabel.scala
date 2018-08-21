@@ -30,20 +30,20 @@
 
 package com.cibo.evilplot.plot.components
 
-import com.cibo.evilplot.colors.{Color, DefaultColors}
+import com.cibo.evilplot.colors.Color
 import com.cibo.evilplot.geometry.{Drawable, Extent, Rect, Text}
 import com.cibo.evilplot.plot.Plot
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 
-case class FacetLabel(
+final case class FacetLabel(
   position: Position,
-  labels: Extent => Seq[Drawable],
-  minExtent: Extent
+  labels: Extent => ThemedValue[Seq[Drawable]],
+  minExtent: ThemedValue[Extent]
 ) extends FacetedPlotComponent {
   override val repeated: Boolean = true
-  override def size(plot: Plot): Extent = minExtent
+  override def size(plot: Plot)(implicit theme: Theme): Extent = minExtent
   def render(plot: Plot, extent: Extent, row: Int, column: Int)(implicit theme: Theme): Drawable = {
-    val ls = labels(extent)
+    val ls = labels(extent).get(theme)
     position match {
       case Position.Top | Position.Bottom => ls(column).center(extent.width)
       case Position.Right | Position.Left => ls(row).middle(extent.height)
@@ -56,26 +56,28 @@ trait FacetLabelImplicits {
   protected val plot: Plot
 
   private def topBottomLabelFunc(
-    drawables: Seq[Drawable],
-    backgroundColor: Color
-  )(extent: Extent): Seq[Drawable] = {
-    val bg = Rect(extent) filled backgroundColor
-    drawables.map(d => bg behind d.center(extent.width))
+    drawables: ThemedValue[Seq[Drawable]],
+    backgroundColor: ThemedValue[Color]
+  )(extent: Extent): ThemedValue[Seq[Drawable]] = {
+    val bg = backgroundColor.map(bc => Rect(extent) filled bc)
+    drawables.flatMap(ds =>
+      ThemedValue.sequence(ds.map(d => bg.flatMap(b => b behind d.center(extent.width)))))
   }
 
   private def leftRightLabelFunc(
-    drawables: Seq[Drawable],
-    backgroundColor: Color
-  )(extent: Extent): Seq[Drawable] = {
-    val bg = Rect(extent) filled backgroundColor
-    drawables.map(d => bg behind d.middle(extent.height))
+    drawables: ThemedValue[Seq[Drawable]],
+    backgroundColor: ThemedValue[Color]
+  )(extent: Extent): ThemedValue[Seq[Drawable]] = {
+    val bg = backgroundColor.map(c => Rect(extent) filled c)
+    drawables.flatMap(ds =>
+      ThemedValue.sequence(ds.map(d => bg.flatMap(b => b behind d.middle(extent.height)))))
   }
 
-  private def maxHeight(drawables: Seq[Drawable]): Double =
-    drawables.maxBy(_.extent.height).extent.height
+  private def maxHeight(drawables: ThemedValue[Seq[Drawable]]): ThemedValue[Double] =
+    drawables.map(_.maxBy(_.extent.height).extent.height)
 
-  private def maxWidth(drawables: Seq[Drawable]): Double =
-    drawables.maxBy(_.extent.width).extent.width
+  private def maxWidth(drawables: ThemedValue[Seq[Drawable]]): ThemedValue[Double] =
+    drawables.map(_.maxBy(_.extent.width).extent.width)
 
   /** Add a label above each facet.
     * @param labels A function to return the labels of the given size.
@@ -83,18 +85,23 @@ trait FacetLabelImplicits {
     */
   def topLabels(
     labels: Extent => Seq[Drawable],
-    height: Double
-  ): Plot = FacetLabel(Position.Top, labels, Extent(0, height)) +: plot
+    height: ThemedValue[Double]
+  ): Plot = FacetLabel(Position.Top, e => labels(e), Extent(0, height)) +: plot
 
   /** Add a label above each facet.
     * @param labels The labels for each facet.
     */
   def topLabels(
-    labels: Seq[String]
-  )(implicit theme: Theme): Plot = {
-    val drawableLabels =
-      labels.map(Text(_, theme.fonts.facetLabelSize, theme.fonts.fontFace).padBottom(4))
-    val func = topBottomLabelFunc(drawableLabels, theme.colors.background)(_)
+    labels: Seq[String],
+    facetLabelSize: ThemedValue[Double] = (t: Theme) => t.fonts.facetLabelSize,
+    fontFace: ThemedValue[String] = (t: Theme) => t.fonts.fontFace,
+    backgroundColor: ThemedValue[Color] = (t: Theme) => t.colors.background
+  ): Plot = {
+    val drawableLabels = facetLabelSize.zip(fontFace).map {
+      case (size, font) =>
+        labels.map(Text(_, size, font).padBottom(4))
+    }
+    val func = topBottomLabelFunc(drawableLabels, backgroundColor)(_)
     topLabels(func, maxHeight(drawableLabels))
   }
 
@@ -103,9 +110,9 @@ trait FacetLabelImplicits {
     * @param height The height of the labels.
     */
   def bottomLabels(
-    labels: Extent => Seq[Drawable],
-    height: Double
-  ): Plot = FacetLabel(Position.Bottom, labels, Extent(0, height)) +: plot
+    labels: Extent => ThemedValue[Seq[Drawable]],
+    height: ThemedValue[Double]
+  ): Plot = FacetLabel(Position.Bottom, labels, height.map(Extent(0, _))) +: plot
 
   /** Add a label below each facet.
     * @param labels The labels for each facet.
@@ -124,9 +131,9 @@ trait FacetLabelImplicits {
     * @param width The width of the labels.
     */
   def rightLabels(
-    labels: Extent => Seq[Drawable],
-    width: Double
-  ): Plot = FacetLabel(Position.Right, labels, Extent(width, 0)) +: plot
+    labels: Extent => ThemedValue[Seq[Drawable]],
+    width: ThemedValue[Double]
+  ): Plot = FacetLabel(Position.Right, labels, width.map(Extent(_, 0))) +: plot
 
   /** Add a label to the right of each facet. */
   def rightLabels(
@@ -143,14 +150,14 @@ trait FacetLabelImplicits {
     * @param width The width of the labels.
     */
   def leftLabels(
-    labels: Extent => Seq[Drawable],
-    width: Double
-  ): Plot = FacetLabel(Position.Left, labels, Extent(width, 0)) +: plot
+    labels: Extent => ThemedValue[Seq[Drawable]],
+    width: ThemedValue[Double]
+  ): Plot = FacetLabel(Position.Left, labels, width.map(w => Extent(_, 0))) +: plot
 
   /** Add a label to the left of each facet. */
   def leftLabels(
     labels: Seq[String]
-  )(implicit theme: Theme): Plot = {
+  ): Plot = {
     val drawableLabels =
       labels.map(Text(_, theme.fonts.facetLabelSize, theme.fonts.fontFace).rotated(270).padRight(4))
     val func = leftRightLabelFunc(drawableLabels, theme.colors.background)(_)

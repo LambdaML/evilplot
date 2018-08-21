@@ -31,25 +31,14 @@
 package com.cibo.evilplot.plot.renderers
 
 import com.cibo.evilplot.colors.Color
-import com.cibo.evilplot.geometry.{
-  Clipping,
-  Drawable,
-  EmptyDrawable,
-  Extent,
-  LineDash,
-  LineStyle,
-  Path,
-  StrokeStyle,
-  Style,
-  Text
-}
+import com.cibo.evilplot.geometry.{Clipping, Drawable, EmptyDrawable, Extent, LineDash, LineStyle, Path, StrokeStyle}
 import com.cibo.evilplot.numeric.Point
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.{LegendContext, Plot}
 
 trait PathRenderer extends PlotElementRenderer[Seq[Point]] {
-  def legendContext: LegendContext = LegendContext.empty
-  def render(plot: Plot, extent: Extent, path: Seq[Point]): Drawable
+  def legendContext(implicit theme: Theme): LegendContext = LegendContext.empty
+  def render(plot: Plot, extent: Extent, path: Seq[Point])(implicit theme: Theme): Drawable
 }
 
 object PathRenderer {
@@ -61,42 +50,37 @@ object PathRenderer {
     * @param label A label for this path (for legends).
     */
   def default(
-    strokeWidth: Option[Double] = None,
-    color: Option[Color] = None,
+    strokeWidth: ThemedValue[Double] = (t: Theme) => t.elements.strokeWidth,
+    color: ThemedValue[Color] = (t: Theme) => t.colors.path,
     label: Drawable = EmptyDrawable(),
-    lineStyle: Option[LineStyle] = None
-  )(implicit theme: Theme): PathRenderer = new PathRenderer {
-    private val useLineStyle: LineStyle = lineStyle
-      .getOrElse(theme.elements.lineDashStyle)
-    private val legendStrokeLength: Double = calcLegendStrokeLength(useLineStyle)
-    override def legendContext: LegendContext = label match {
+    lineStyle: ThemedValue[LineStyle] = (t: Theme) => t.elements.lineDashStyle
+  ): PathRenderer = new PathRenderer {
+    override def legendContext(implicit theme: Theme): LegendContext = label match {
       case _: EmptyDrawable => LegendContext.empty
       case d =>
         LegendContext.single(
           LineDash(
             StrokeStyle(
               Path(
-                Seq(Point(0, 0), Point(legendStrokeLength, 0)),
-                strokeWidth.getOrElse(theme.elements.strokeWidth)
+                Seq(Point(0, 0), Point(calcLegendStrokeLength(lineStyle), 0)),
+                strokeWidth
               ),
-              color.getOrElse(theme.colors.path)
+              color
             ),
-            useLineStyle
+            lineStyle
           ),
           d
         )
     }
 
-    def render(plot: Plot, extent: Extent, path: Seq[Point]): Drawable = {
+    def render(plot: Plot, extent: Extent, path: Seq[Point])(implicit theme: Theme): Drawable = {
       Clipping
         .clipPath(path, extent)
         .map(
           segment =>
             LineDash(
-              StrokeStyle(
-                Path(segment, strokeWidth.getOrElse(theme.elements.strokeWidth)),
-                color.getOrElse(theme.colors.path)),
-              useLineStyle
+              StrokeStyle(Path(segment, strokeWidth), color),
+              lineStyle
           )
         )
         .group
@@ -111,23 +95,14 @@ object PathRenderer {
   def named(
     name: String,
     color: Color,
-    strokeWidth: Option[Double] = None,
-    lineStyle: Option[LineStyle] = None
-  )(implicit theme: Theme): PathRenderer =
+    strokeWidth: ThemedValue[Double] = (t: Theme) => t.elements.strokeWidth,
+    label: Drawable
+  ): PathRenderer =
     default(
       strokeWidth,
-      Some(color),
-      Style(
-        Text(name, theme.fonts.legendLabelSize, theme.fonts.fontFace),
-        theme.colors.legendLabel),
-      lineStyle
+      color,
+      label
     )
-
-  /** Path renderer for closed paths. The first point is connected to the last point.
-    * @param color the color of this path.
-    */
-  @deprecated("Use the overload taking a strokeWidth, color, label and lineStyle", "2 April 2018")
-  def closed(color: Color)(implicit theme: Theme): PathRenderer = closed(color = Some(color))
 
   /** Path renderer for closed paths. The first point is connected to the last point.
     * @param strokeWidth the stroke width
@@ -135,12 +110,12 @@ object PathRenderer {
     * @param label the label for the legend
     */
   def closed(
-    strokeWidth: Option[Double] = None,
-    color: Option[Color] = None,
+    strokeWidth: ThemedValue[Double] = (t: Theme) => t.elements.strokeWidth,
+    color: ThemedValue[Color] = (t: Theme) => t.colors.path,
     label: Drawable = EmptyDrawable(),
-    lineStyle: Option[LineStyle] = None
-  )(implicit theme: Theme): PathRenderer = new PathRenderer {
-    def render(plot: Plot, extent: Extent, path: Seq[Point]): Drawable = {
+    lineStyle: ThemedValue[LineStyle] = (t: Theme) => t.elements.lineDashStyle
+  ): PathRenderer = new PathRenderer {
+    def render(plot: Plot, extent: Extent, path: Seq[Point])(implicit theme: Theme): Drawable = {
       path.headOption.fold(EmptyDrawable(): Drawable) { head =>
         default(strokeWidth, color, label, lineStyle).render(plot, extent, path :+ head)
       }
@@ -151,7 +126,8 @@ object PathRenderer {
     * A no-op renderer for when you don't want to render paths (such as on a scatter plot)
     */
   def empty(): PathRenderer = new PathRenderer {
-    def render(plot: Plot, extent: Extent, path: Seq[Point]): Drawable = EmptyDrawable()
+    def render(plot: Plot, extent: Extent, path: Seq[Point])(implicit theme: Theme): Drawable =
+      EmptyDrawable()
   }
 
   // Need to use a multiple of the pattern array so the legend looks accurate.

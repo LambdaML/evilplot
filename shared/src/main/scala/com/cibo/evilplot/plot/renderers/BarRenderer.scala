@@ -32,40 +32,43 @@ package com.cibo.evilplot.plot.renderers
 
 import com.cibo.evilplot.colors.Color
 import com.cibo.evilplot.geometry._
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.{Bar, LegendContext, Plot}
 
 trait BarRenderer extends PlotElementRenderer[Bar] {
-  def render(plot: Plot, extent: Extent, category: Bar): Drawable
-  def legendContext: Option[LegendContext] = None
+  def render(plot: Plot, extent: Extent, category: Bar)(implicit theme: Theme): Drawable
+  // for now, this will take a theme
+  def legendContext(implicit theme: Theme): Option[LegendContext] = None
 }
 
 object BarRenderer {
+  private val ThemedBarColor: ThemedValue[Color] = (t: Theme) => t.colors.bar
 
   /** Default bar renderer. */
   def default(
-    color: Option[Color] = None
-  )(implicit theme: Theme): BarRenderer = new BarRenderer {
-    def render(plot: Plot, extent: Extent, bar: Bar): Drawable = {
-      Rect(extent.width, extent.height).filled(color.getOrElse(theme.colors.bar))
+    color: ThemedValue[Color] = ThemedBarColor
+  ): BarRenderer = new BarRenderer {
+    def render(plot: Plot, extent: Extent, bar: Bar)(implicit theme: Theme): Drawable = {
+      Rect(extent.width, extent.height).filled(color)
     }
   }
 
   /** A BarRenderer that assigns a single name to this bar. */
   def named(
-    color: Option[Color] = None,
+    color: ThemedValue[Color] = ThemedBarColor,
     name: Option[String] = None,
     legendElement: Option[Drawable] = None
-  )(implicit theme: Theme): BarRenderer = new BarRenderer {
-    def render(plot: Plot, extent: Extent, bar: Bar): Drawable = {
-      Rect(extent.width, extent.height).filled(color.getOrElse(theme.colors.bar))
+  ): BarRenderer = new BarRenderer {
+    def render(plot: Plot, extent: Extent, bar: Bar)(implicit theme: Theme): Drawable = {
+      Rect(extent.width, extent.height).filled(color)
     }
 
-    override def legendContext: Option[LegendContext] = name.map { n =>
+    // TODO: Sizes shouldn't be part of the construction of the legendcontext
+    override def legendContext(theme: Theme): Option[LegendContext] = name.map { n =>
       LegendContext.single(
         element = legendElement.getOrElse {
           val legSize = theme.fonts.legendLabelSize
-          Rect(legSize, legSize).filled(color.getOrElse(theme.colors.bar))
+          Rect(legSize, legSize).filled(color.get(theme))
         },
         label = n
       )
@@ -74,14 +77,14 @@ object BarRenderer {
 
   /** Create a bar renderer to render a clustered bar chart. */
   def clustered(): BarRenderer = new BarRenderer {
-    def render(plot: Plot, extent: Extent, bar: Bar): Drawable = {
+    def render(plot: Plot, extent: Extent, bar: Bar)(implicit theme: Theme): Drawable = {
       Rect(extent.width, extent.height).filled(bar.getColor(0))
     }
   }
 
   /** Create a bar renderer to render a stacked bar chart. */
   def stacked(): BarRenderer = new BarRenderer {
-    def render(plot: Plot, extent: Extent, bar: Bar): Drawable = {
+    def render(plot: Plot, extent: Extent, bar: Bar)(implicit theme: Theme): Drawable = {
       val scale = if (bar.height == 0) 0.0 else extent.height / bar.height
       bar.values.zipWithIndex
         .map {

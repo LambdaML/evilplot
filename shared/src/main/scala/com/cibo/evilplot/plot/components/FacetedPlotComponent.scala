@@ -36,7 +36,6 @@ import com.cibo.evilplot.plot.aesthetics.Theme
 
 /** A component that is aligned with the data of a plot. */
 trait FacetedPlotComponent {
-
   /** The position of this component. */
   val position: Position
 
@@ -46,7 +45,7 @@ trait FacetedPlotComponent {
   val repeated: Boolean = false
 
   /** Get the minimum size of this component. */
-  def size(plot: Plot): Extent = Extent(0, 0)
+  def size(plot: Plot)(implicit theme: Theme): Extent = Extent(0, 0)
 
   /** Render the component for a particular facet.
     * @param plot The plot or subplot if a facet.

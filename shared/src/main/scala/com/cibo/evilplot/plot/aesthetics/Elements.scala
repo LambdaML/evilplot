@@ -53,4 +53,6 @@ final case class Elements(
   yGridLineCount: Int,
   tickThickness: Double,
   tickLength: Double
-)
+) {
+  private[evilplot] def aesthetics: Map[String, Any] = Map("xTickCount" -> xTickCount)
+}

@@ -33,7 +33,7 @@ package com.cibo.evilplot.plot.components
 import com.cibo.evilplot.geometry._
 import com.cibo.evilplot.numeric._
 import com.cibo.evilplot.plot.Plot
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.renderers.{GridLineRenderer, TickRenderer}
 
 object Axes {
@@ -43,21 +43,21 @@ object Axes {
 
     val tickRenderer: TickRenderer
 
-    def getDescriptor(plot: Plot, fixed: Boolean): AxisDescriptor
+    def getDescriptor(plot: Plot, fixed: Boolean, theme: Theme): AxisDescriptor
 
     final protected def ticks(descriptor: AxisDescriptor): Seq[Drawable] =
       descriptor.labels.map(tickRenderer.render)
   }
 
   private sealed trait ContinuousAxis {
-    val tickCount: Int
+    val tickCount: ThemedValue[Int]
     val tickCountRange: Option[Seq[Int]]
     val labelFormatter: Option[Double => String] = None
     def bounds(plot: Plot): Bounds
-    def getDescriptor(plot: Plot, fixed: Boolean): AxisDescriptor =
+    def getDescriptor(plot: Plot, fixed: Boolean, theme: Theme): AxisDescriptor =
       Labeling.label(
         bounds(plot),
-        preferredTickCount = Some(tickCount),
+        preferredTickCount = Some(tickCount.get(theme)),
         tickCountRange = tickCountRange,
         formatter = labelFormatter,
         fixed = fixed)
@@ -65,14 +65,14 @@ object Axes {
 
   private sealed trait DiscreteAxis {
     val labels: Seq[(String, Double)]
-    def getDescriptor(plot: Plot, fixed: Boolean): AxisDescriptor = DiscreteAxisDescriptor(labels)
+    def getDescriptor(plot: Plot, fixed: Boolean, theme: Theme): AxisDescriptor = DiscreteAxisDescriptor(labels)
   }
 
   private sealed trait ArbitraryAxisPlotComponent extends AxisPlotComponent {
     val align: Double = 0
 
-    override def size(plot: Plot): Extent = {
-      val extents = ticks(getDescriptor(plot, fixed = true)).map(_.extent)
+    override def size(plot: Plot)(implicit theme: Theme): Extent = {
+      val extents = ticks(getDescriptor(plot, fixed = true, theme)).map(_.extent)
       position match {
         case Position.Left | Position.Right => extents.maxBy(_.width)
         case Position.Bottom | Position.Top => extents.maxBy(_.height)
@@ -83,7 +83,7 @@ object Axes {
     def bounds(plot: Plot): Bounds
 
     def render(plot: Plot, extent: Extent)(implicit theme: Theme): Drawable = {
-      val descriptor = getDescriptor(plot, fixed = true)
+      val descriptor = getDescriptor(plot, fixed = true, theme)
       val scale = position match {
         case Position.Left | Position.Right => extent.height / descriptor.axisBounds.range
         case Position.Bottom | Position.Top => extent.width / descriptor.axisBounds.range
@@ -132,7 +132,7 @@ object Axes {
   private case class ContinuousAxisPlotComponent(
     boundsFn: Plot => Bounds,
     override val position: Position,
-    tickCount: Int,
+    tickCount: ThemedValue[Int],
     tickRenderer: TickRenderer,
     override val labelFormatter: Option[Double => String],
     tickCountRange: Option[Seq[Int]]
@@ -154,7 +154,7 @@ object Axes {
 
   private sealed trait GridComponent extends PlotComponent {
     val lineRenderer: GridLineRenderer
-    def getDescriptor(plot: Plot, fixed: Boolean): AxisDescriptor
+    def getDescriptor(plot: Plot, fixed: Boolean, theme: Theme): AxisDescriptor
 
     final val position: Position = Position.Background
     override final val repeated: Boolean = true
@@ -166,7 +166,7 @@ object Axes {
   private trait XGridComponent extends GridComponent {
     def bounds(plot: Plot): Bounds = plot.xbounds
     def render(plot: Plot, extent: Extent)(implicit theme: Theme): Drawable = {
-      val descriptor = getDescriptor(plot, fixed = true)
+      val descriptor = getDescriptor(plot, fixed = true, theme: Theme)
       val scale = extent.width / descriptor.axisBounds.range
       lines(descriptor, extent)
         .zip(descriptor.values)
@@ -182,7 +182,7 @@ object Axes {
   private trait YGridComponent extends GridComponent {
     def bounds(plot: Plot): Bounds = plot.ybounds
     def render(plot: Plot, extent: Extent)(implicit theme: Theme): Drawable = {
-      val descriptor = getDescriptor(plot, fixed = true)
+      val descriptor = getDescriptor(plot, fixed = true, theme: Theme)
       val scale = extent.height / descriptor.axisBounds.range
       val ls = lines(descriptor, extent)
       val maxWidth = ls.maxBy(_.extent.width).extent.width
@@ -197,14 +197,14 @@ object Axes {
   }
 
   private case class ContinuousXGridComponent(
-    tickCount: Int,
+    tickCount: ThemedValue[Int],
     lineRenderer: GridLineRenderer,
     tickCountRange: Option[Seq[Int]]
   ) extends XGridComponent
       with ContinuousAxis
 
   private case class ContinuousYGridComponent(
-    tickCount: Int,
+    tickCount: ThemedValue[Int],
     lineRenderer: GridLineRenderer,
     tickCountRange: Option[Seq[Int]]
   ) extends YGridComponent
@@ -225,7 +225,7 @@ object Axes {
     def continuousAxis(
       boundsFn: Plot => Bounds,
       position: Position,
-      tickCount: Option[Int] = None,
+      tickCount: ThemedValue[Int] = (t: Theme) => t.elements.tickCount,
       tickRenderer: Option[TickRenderer] = None,
       labelFormatter: Option[Double => String] = None,
       tickCountRange: Option[Seq[Int]] = None,
@@ -239,7 +239,7 @@ object Axes {
       val component = ContinuousAxisPlotComponent(
         boundsFn,
         position,
-        tickCount.getOrElse(theme.elements.tickCount),
+        tickCount,
         tickRenderer.getOrElse(
           TickRenderer.axisTickRenderer(
             position,
@@ -253,9 +253,9 @@ object Axes {
       if (updatePlotBounds) {
         position match {
           case Position.Left | Position.Right =>
-            component +: plot.ybounds(component.getDescriptor(plot, plot.yfixed).axisBounds)
+            component +: plot.ybounds(component.getDescriptor(plot, plot.yfixed, theme).axisBounds)
           case Position.Bottom | Position.Top =>
-            component +: plot.xbounds(component.getDescriptor(plot, plot.xfixed).axisBounds)
+            component +: plot.xbounds(component.getDescriptor(plot, plot.xfixed, theme).axisBounds)
           case _ =>
             component +: plot
         }
@@ -303,10 +303,11 @@ object Axes {
       )
       if (updatePlotBounds) {
         position match {
+            // TODO: Pulling the theme out from here is likely going to be the hardest part.
           case Position.Left | Position.Right =>
-            component +: plot.ybounds(component.getDescriptor(plot, true).axisBounds)
+            component +: plot.ybounds(component.getDescriptor(plot, true, theme).axisBounds)
           case Position.Bottom | Position.Top =>
-            component +: plot.xbounds(component.getDescriptor(plot, true).axisBounds)
+            component +: plot.xbounds(component.getDescriptor(plot, true, theme).axisBounds)
           case _ =>
             component +: plot
         }
@@ -323,7 +324,7 @@ object Axes {
       * @param position       The side of the plot to add the axis.
       */
     def xAxis(
-      tickCount: Option[Int] = None,
+      tickCount: ThemedValue[Int] = (t: Theme) => t.elements.xTickCount,
       tickRenderer: Option[TickRenderer] = None,
       labelFormatter: Option[Double => String] = None,
       tickCountRange: Option[Seq[Int]] = None,
@@ -333,7 +334,7 @@ object Axes {
       continuousAxis(
         p => p.xbounds,
         position,
-        Some(tickCount.getOrElse(theme.elements.xTickCount)),
+        tickCount,
         tickRenderer,
         labelFormatter,
         tickCountRange,
@@ -390,7 +391,7 @@ object Axes {
       * @param position       The side of the plot to add the axis.
       */
     def yAxis(
-      tickCount: Option[Int] = None,
+      tickCount: ThemedValue[Int] = (t: Theme) => t.elements.tickCount,
       tickRenderer: Option[TickRenderer] = None,
       labelFormatter: Option[Double => String] = None,
       tickCountRange: Option[Seq[Int]] = None,
@@ -400,7 +401,7 @@ object Axes {
       continuousAxis(
         p => p.ybounds,
         position,
-        Some(tickCount.getOrElse(theme.elements.yTickCount)),
+        tickCount,
         tickRenderer,
         labelFormatter,
         tickCountRange,
@@ -463,7 +464,7 @@ object Axes {
         lineRenderer.getOrElse(GridLineRenderer.xGridLineRenderer()),
         tickCountRange
       )
-      plot.xbounds(component.getDescriptor(plot, plot.xfixed).axisBounds) :+ component
+      plot.xbounds(component.getDescriptor(plot, plot.xfixed, theme).axisBounds) :+ component
     }
 
     /** Add y grid lines to the plot.
@@ -480,7 +481,7 @@ object Axes {
         lineRenderer.getOrElse(GridLineRenderer.yGridLineRenderer()),
         tickCountRange
       )
-      plot.ybounds(component.getDescriptor(plot, plot.yfixed).axisBounds) :+ component
+      plot.ybounds(component.getDescriptor(plot, plot.yfixed, theme).axisBounds) :+ component
     }
   }
 }

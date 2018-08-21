@@ -38,17 +38,19 @@ import com.cibo.evilplot.geometry.{
   Extent,
   Line,
   LineDash,
+  LineStyle,
   Rect,
   StrokeStyle
 }
 import com.cibo.evilplot.numeric.BoxPlotSummaryStatistics
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.renderers.BoxRenderer.BoxRendererContext
 import com.cibo.evilplot.plot.{LegendContext, Plot}
 
 trait BoxRenderer extends PlotElementRenderer[BoxRendererContext] {
-  def render(plot: Plot, extent: Extent, summary: BoxRendererContext): Drawable
-  def legendContext: LegendContext = LegendContext.empty
+  def render(plot: Plot, extent: Extent, summary: BoxRendererContext)(
+    implicit theme: Theme): Drawable
+  def legendContext(implicit theme: Theme): LegendContext = LegendContext.empty
 }
 
 object BoxRenderer {
@@ -58,22 +60,23 @@ object BoxRenderer {
     cluster: Int = 0
   )
 
+  private val ThemedFillColor = ThemedValue(Right((t: Theme) => t.colors.fill))
+  private val ThemedStrokeColor = ThemedValue(Right((t: Theme) => t.colors.path))
+  private val ThemedLineDash = ThemedValue(Right((t: Theme) => t.elements.lineDashStyle))
+  private val ThemedStrokeWidth = ThemedValue(Right((t: Theme) => t.elements.strokeWidth))
+
   def default(
-    fillColor: Option[Color] = None,
-    strokeColor: Option[Color] = None,
-    lineDash: Option[LineDash] = None,
-    strokeWidth: Option[Double] = None
-  )(implicit theme: Theme): BoxRenderer = new BoxRenderer {
-    private val useFillColor = fillColor.getOrElse(theme.colors.fill)
-    private val useStrokeColor = strokeColor.getOrElse(theme.colors.path)
-    private val useLineDash = lineDash.getOrElse(theme.elements.lineDashStyle)
-    private val useStrokeWidth = strokeWidth.getOrElse(theme.elements.strokeWidth)
+    fillColor: ThemedValue[Color] = ThemedFillColor,
+    strokeColor: ThemedValue[Color] = ThemedStrokeColor,
+    lineDash: ThemedValue[LineStyle] = ThemedLineDash,
+    strokeWidth: ThemedValue[Double] = ThemedStrokeWidth
+  ): BoxRenderer = new BoxRenderer {
 
     def render(
       plot: Plot,
       extent: Extent,
       context: BoxRendererContext
-    ): Drawable = {
+    )(implicit theme: Theme): Drawable = {
       val summary = context.summaryStatistics
       val scale = extent.height / (summary.upperWhisker - summary.lowerWhisker)
       val topWhisker = summary.upperWhisker - summary.upperQuantile
@@ -83,17 +86,17 @@ object BoxRenderer {
 
       Align
         .center(
-          StrokeStyle(Line(scale * topWhisker, useStrokeWidth), useStrokeColor)
+          StrokeStyle(Line(scale * topWhisker, strokeWidth), strokeColor)
             .rotated(90),
           BorderRect
             .filled(extent.width, scale * uppperToMiddle)
-            .colored(useStrokeColor)
-            .filled(useFillColor),
+            .colored(strokeColor)
+            .filled(fillColor),
           BorderRect
             .filled(extent.width, scale * middleToLower)
-            .colored(useStrokeColor)
-            .filled(useFillColor),
-          StrokeStyle(Line(scale * bottomWhisker, theme.elements.strokeWidth), useStrokeColor)
+            .colored(strokeColor)
+            .filled(fillColor),
+          StrokeStyle(Line(scale * bottomWhisker, theme.elements.strokeWidth), strokeColor)
             .rotated(90)
         )
         .reduce(_ above _)
@@ -101,18 +104,14 @@ object BoxRenderer {
   }
 
   def tufte(
-    fillColor: Option[Color] = None,
-    strokeColor: Option[Color] = None,
-    lineDash: Option[LineDash] = None,
-    strokeWidth: Option[Double] = None
-  )(implicit theme: Theme): BoxRenderer = new BoxRenderer {
+    fillColor: ThemedValue[Color] = ThemedFillColor,
+    strokeColor: ThemedValue[Color] = ThemedStrokeColor,
+    lineDash: ThemedValue[LineStyle] = ThemedLineDash,
+    strokeWidth: ThemedValue[Double] = ThemedStrokeWidth
+  ): BoxRenderer = new BoxRenderer {
 
-    private val useFillColor = fillColor.getOrElse(theme.colors.fill)
-    private val useStrokeColor = strokeColor.getOrElse(theme.colors.path)
-    private val useLineDash = lineDash.getOrElse(theme.elements.lineDashStyle)
-    private val useStrokeWidth = strokeWidth.getOrElse(theme.elements.strokeWidth)
-
-    def render(plot: Plot, extent: Extent, context: BoxRenderer.BoxRendererContext): Drawable = {
+    def render(plot: Plot, extent: Extent, context: BoxRenderer.BoxRendererContext)(
+      implicit theme: Theme): Drawable = {
       val summary = context.summaryStatistics
       val scale = extent.height / (summary.upperWhisker - summary.lowerWhisker)
       val topWhisker = summary.upperWhisker - summary.upperQuantile
@@ -122,16 +121,16 @@ object BoxRenderer {
 
       Align
         .center(
-          StrokeStyle(Line(scale * topWhisker, useStrokeWidth / 2), useStrokeColor)
+          StrokeStyle(Line(scale * topWhisker, strokeWidth / 2), strokeColor)
             .rotated(90)
             .translate(extent.width / 2),
-          StrokeStyle(Line(scale * uppperToMiddle, useStrokeWidth), useStrokeColor)
+          StrokeStyle(Line(scale * uppperToMiddle, strokeWidth), strokeColor)
             .rotated(90)
             .translate(extent.width / 2),
-          StrokeStyle(Line(scale * middleToLower, useStrokeWidth), useStrokeColor)
+          StrokeStyle(Line(scale * middleToLower, strokeWidth), strokeColor)
             .rotated(90)
             .translate(extent.width / 2),
-          StrokeStyle(Line(scale * bottomWhisker, useStrokeWidth / 2), useStrokeColor)
+          StrokeStyle(Line(scale * bottomWhisker, strokeWidth / 2), strokeColor)
             .rotated(90)
             .translate(extent.width / 2)
         )
@@ -139,25 +138,29 @@ object BoxRenderer {
 
     }
   }
-
+  // TODO: CategoricalColoring.themed probably won't work with this
   def colorBy[A: Ordering](
     colorDimension: Seq[A],
-    fillColoring: Option[CategoricalColoring[A]] = None,
-    strokeColor: Option[Color] = None,
-    lineDash: Option[LineDash] = None,
-    strokeWidth: Option[Double] = None
-  )(implicit theme: Theme): BoxRenderer = new BoxRenderer {
-    private val useColoring = fillColoring.getOrElse(CategoricalColoring.themed[A])
-    private val colorFunc = useColoring(colorDimension)
+    fillColoring: CategoricalColoring[A] = CategoricalColoring.themed[A],
+    strokeColor: ThemedValue[Color] = ThemedStrokeColor,
+    lineDash: ThemedValue[LineStyle] = ThemedLineDash,
+    strokeWidth: ThemedValue[Double] = ThemedStrokeWidth
+  ): BoxRenderer = new BoxRenderer {
+    private val colorFunc = fillColoring(colorDimension)
 
-    def render(plot: Plot, extent: Extent, context: BoxRendererContext): Drawable = {
+    def render(plot: Plot, extent: Extent, context: BoxRendererContext)(
+      implicit theme: Theme): Drawable = {
       BoxRenderer
-        .default(fillColor = Some(colorFunc(colorDimension(context.index))))
+        .default(
+          fillColor = colorFunc(colorDimension(context.index)),
+          strokeColor = strokeColor,
+          lineDash = lineDash,
+          strokeWidth = strokeWidth)
         .render(plot, extent, context)
     }
 
-    override def legendContext: LegendContext = {
-      useColoring.legendContext(colorDimension, legendGlyph = d => Rect(d))
+    override def legendContext(implicit theme: Theme): LegendContext = {
+      fillColoring.legendContext(colorDimension, legendGlyph = d => Rect(d))
     }
   }
 }

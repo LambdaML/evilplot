@@ -31,11 +31,11 @@
 package com.cibo.evilplot.plot.renderers
 
 import com.cibo.evilplot.geometry._
-import com.cibo.evilplot.plot.aesthetics.Theme
+import com.cibo.evilplot.plot.aesthetics.{Theme, ThemedValue}
 import com.cibo.evilplot.plot.components.Position
 
 trait TickRenderer {
-  def render(label: String): Drawable
+  def render(label: String)(implicit theme: Theme): Drawable
 }
 
 object TickRenderer {
@@ -43,43 +43,10 @@ object TickRenderer {
   val defaultTickThickness: Double = 1
   val defaultTickLength: Double = 5
 
-  /** Create a renderer to render a tick on the x axis.
-    *
-    * @param length     The length of the tick line.
-    * @param thickness  The thickness of the tick line.
-    * @param rotateText The rotation of the label.
-    */
-  @deprecated("Use axisTickRenderer", "EvilPlot 0.3.4")
-  def xAxisTickRenderer(
-    length: Double = defaultTickLength,
-    thickness: Double = defaultTickThickness,
-    rotateText: Double = 0
-  )(implicit theme: Theme): TickRenderer = axisTickRenderer(
-    Position.Bottom,
-    length,
-    thickness,
-    rotateText
-  )
-
-  /** Create a renderer to render a tick on the y axis.
-    *
-    * @param length    The length of the tick line.
-    * @param thickness The thickness of the tick line.
-    */
-  @deprecated("Use axisTickRenderer", "EvilPlot 0.3.4")
-  def yAxisTickRenderer(
-    length: Double = defaultTickLength,
-    thickness: Double = defaultTickThickness
-  )(implicit theme: Theme): TickRenderer = axisTickRenderer(
-    Position.Left,
-    length,
-    thickness,
-    0
-  )
-
   //TODO revisit alignment for rotated text labels so that tick is aligned to "highest" part of text
   //     e.g. left-side for 1-89 & 181 - 269, right-side for 91 - 179 & 271-359
   //     or expose alignment?
+  // TODO: fix the theme values here / method signature
   /** Create a renderer to render a tick on an arbitrary axis.
     *
     * @param position   The side of the plot where this axis will be added.
@@ -89,11 +56,11 @@ object TickRenderer {
     */
   def axisTickRenderer(
     position: Position,
-    length: Double = defaultTickLength,
-    thickness: Double = defaultTickThickness,
-    rotateText: Double = 0
-  )(implicit theme: Theme): TickRenderer = new TickRenderer {
-    def render(label: String): Drawable = {
+    length: ThemedValue[Double] = defaultTickLength,
+    thickness: ThemedValue[Double] = defaultTickThickness,
+    rotateText: ThemedValue[Double] = 0
+  ): TickRenderer = new TickRenderer {
+    def render(label: String)(implicit theme: Theme): Drawable = {
       val line = Line(length, thickness).colored(theme.colors.tickLabel)
       val verticalLine = line.rotated(90)
       val text = Style(

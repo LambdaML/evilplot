@@ -34,12 +34,12 @@ import com.cibo.evilplot.geometry.{Drawable, Extent}
 import com.cibo.evilplot.plot.Plot
 import com.cibo.evilplot.plot.aesthetics.Theme
 
-case class BorderPlot(
+final case class BorderPlot(
   position: Position,
   borderSize: Double,
   border: Plot
 ) extends PlotComponent {
-  override def size(plot: Plot): Extent = Extent(borderSize, borderSize)
+  override def size(plot: Plot)(implicit theme: Theme): Extent = Extent(borderSize, borderSize)
   def render(plot: Plot, extent: Extent)(implicit theme: Theme): Drawable = {
     position match {
       case Position.Top =>

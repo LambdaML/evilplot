@@ -43,4 +43,6 @@ final case class Theme(
   fonts: Fonts,
   colors: Colors,
   elements: Elements
-)
+) {
+  private[evilplot] def aesthetics: Map[String, Any] = fonts.aesthetics ++ colors.aesthetics ++ elements.aesthetics
+}
